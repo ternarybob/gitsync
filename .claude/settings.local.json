@@ -11,7 +11,9 @@
       "Bash(./scripts/build.sh:*)",
       "Bash(timeout:*)",
       "Bash(gofmt:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)"
     ],
     "deny": [],
     "ask": []

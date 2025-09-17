@@ -178,11 +178,6 @@ if [ -n "$OS" ] && [ -n "$ARCH" ]; then
     echo "Target: $OS/$ARCH"
 fi
 
-# Create version file
-cat > bin/version.txt <<EOF
-Version: $VERSION
-Build: $BUILD_TIME
-Environment: $ENVIRONMENT
-EOF
+# Version information is embedded via build flags, no separate file needed
 
 echo -e "\n${GREEN}Build complete!${NC}"

@@ -212,13 +212,7 @@ try {
         Write-Host "Target: $OS/$Arch"
     }
 
-    # Create version file
-    $versionFile = Join-Path -Path $binDir -ChildPath "version.txt"
-    @"
-Version: $Version
-Build: $buildTime
-Environment: $Environment
-"@ | Out-File -FilePath $versionFile -Encoding utf8
+    # Version information is embedded via build flags, no separate file needed
 
     Write-Host "`nBuild complete!" -ForegroundColor Green
 }
