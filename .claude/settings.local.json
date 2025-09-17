@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/development/aktis/aktis-receiver/**)",
+      "WebFetch(domain:github.com)",
+      "Bash(go mod init:*)",
+      "Bash(go get:*)",
+      "Bash(chmod:*)",
+      "Bash(go build:*)",
+      "Bash(./bin/gitsync:*)",
+      "Bash(./scripts/build.sh:*)",
+      "Bash(timeout:*)",
+      "Bash(gofmt:*)",
+      "Bash(git add:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

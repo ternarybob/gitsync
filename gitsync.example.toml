@@ -1,0 +1,80 @@
+# GitSync Configuration
+#
+# This file configures the GitSync service for synchronizing git repositories.
+#
+# Environment variables can be used with ${VAR} syntax.
+# Cron expressions: https://crontab.guru/
+#
+# Schedule format: "SEC MIN HOUR DAY MONTH WEEKDAY"
+# Examples:
+#   "0 */5 * * * *"  - Every 5 minutes
+#   "0 0 */2 * * *"  - Every 2 hours
+#   "0 0 0 * * *"    - Daily at midnight
+#   "@hourly"        - Every hour
+#   "@daily"         - Every day at midnight
+#
+
+[service]
+name = "gitsync"
+environment = "development"
+
+[[jobs]]
+name = "main-sync"
+description = "Synchronize main repositories"
+schedule = "0 */5 * * * *"  # Every 5 minutes
+enabled = true
+timeout = "5m"
+
+  [[jobs.repos]]
+  name = "my-project"
+  source = "https://github.com/myorg/my-project.git"
+  targets = [
+    "https://gitlab.com/myorg/my-project.git",
+    "https://bitbucket.org/myorg/my-project.git"
+  ]
+  branch = "main"
+
+  [[jobs.repos]]
+  name = "another-project"
+  source = "https://github.com/myorg/another-project.git"
+  targets = ["https://gitlab.com/myorg/another-project.git"]
+  branch = "master"
+
+  [jobs.git]
+  username = "git-sync-bot"
+  token_env_var = "GITHUB_TOKEN"  # Set GITHUB_TOKEN environment variable
+  commit_author = "Git Sync Bot"
+  commit_email = "gitsync@example.com"
+
+[[jobs]]
+name = "hourly-backup"
+description = "Hourly backup of critical repositories"
+schedule = "@hourly"
+enabled = false  # Disabled by default
+timeout = "10m"
+
+  [[jobs.repos]]
+  name = "critical-service"
+  source = "https://github.com/myorg/critical-service.git"
+  targets = ["https://backup.example.com/critical-service.git"]
+  branch = "production"
+
+  [jobs.git]
+  username = "backup-bot"
+  token_env_var = "BACKUP_TOKEN"
+  commit_author = "Backup Bot"
+  commit_email = "backup@example.com"
+
+[store]
+path = "./data/gitsync.db"
+bucket_name = "sync_transactions"
+max_transactions = 1000
+retention_days = 30
+
+[logging]
+level = "info"
+format = "json"
+output = "stdout"
+max_size = 100
+max_backups = 3
+max_age = 28

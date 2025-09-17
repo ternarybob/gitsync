@@ -1,0 +1,57 @@
+# GitSync Production Configuration
+
+[service]
+name = "gitsync"
+environment = "production"
+
+[[jobs]]
+name = "critical-sync"
+description = "Critical repository synchronization"
+schedule = "0 */10 * * * *"  # Every 10 minutes
+enabled = true
+timeout = "15m"
+
+  [[jobs.repos]]
+  name = "main-service"
+  source = "${MAIN_SERVICE_SOURCE}"
+  targets = ["${MAIN_SERVICE_TARGET}"]
+  branch = "main"
+
+  [jobs.git]
+  username = "${GIT_USERNAME}"
+  token_env_var = "GIT_TOKEN"
+  commit_author = "GitSync Production"
+  commit_email = "${GIT_EMAIL}"
+
+[[jobs]]
+name = "backup-sync"
+description = "Hourly backup synchronization"
+schedule = "0 0 * * * *"  # Every hour
+enabled = true
+timeout = "30m"
+
+  [[jobs.repos]]
+  name = "backup-repo"
+  source = "${BACKUP_SOURCE}"
+  targets = ["${BACKUP_TARGET}"]
+  branch = "main"
+
+  [jobs.git]
+  username = "${BACKUP_USERNAME}"
+  token_env_var = "BACKUP_TOKEN"
+  commit_author = "GitSync Backup"
+  commit_email = "${BACKUP_EMAIL}"
+
+[store]
+path = "/var/lib/gitsync/gitsync.db"
+bucket_name = "sync_transactions"
+max_transactions = 10000
+retention_days = 90
+
+[logging]
+level = "info"
+format = "json"
+output = "/var/log/gitsync/gitsync.log"
+max_size = 100
+max_backups = 10
+max_age = 30

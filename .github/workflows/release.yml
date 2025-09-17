@@ -1,0 +1,215 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g., v1.0.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: windows
+            goarch: amd64
+            ext: .exe
+            name: windows-amd64
+          - goos: windows
+            goarch: arm64
+            ext: .exe
+            name: windows-arm64
+          - goos: darwin
+            goarch: amd64
+            ext: ""
+            name: darwin-amd64
+          - goos: darwin
+            goarch: arm64
+            ext: ""
+            name: darwin-arm64
+          - goos: linux
+            goarch: amd64
+            ext: ""
+            name: linux-amd64
+          - goos: linux
+            goarch: arm64
+            ext: ""
+            name: linux-arm64
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+
+    - name: Get version
+      id: version
+      run: |
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          echo "tag=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+        elif [ -f ".version" ]; then
+          # Read version from .version file
+          VERSION=$(grep "^version:" .version | cut -d' ' -f2)
+          echo "version=v${VERSION}" >> $GITHUB_OUTPUT
+          echo "tag=v${VERSION}" >> $GITHUB_OUTPUT
+        else
+          echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Get build time
+      id: build_time
+      run: echo "build_time=$(date -u '+%Y-%m-%d %H:%M:%S')" >> $GITHUB_OUTPUT
+
+    - name: Tidy dependencies
+      run: go mod tidy
+
+    - name: Run tests
+      run: go test ./...
+
+    - name: Build binary
+      env:
+        GOOS: ${{ matrix.goos }}
+        GOARCH: ${{ matrix.goarch }}
+        CGO_ENABLED: 0
+      run: |
+        mkdir -p dist
+        BINARY_NAME="gitsync-${{ steps.version.outputs.version }}-${{ matrix.name }}${{ matrix.ext }}"
+        go build \
+          -trimpath \
+          -ldflags "-s -w -X github.com/ternarybob/gitsync/internal/version.Version=${{ steps.version.outputs.version }} -X 'github.com/ternarybob/gitsync/internal/version.Build=${{ steps.build_time.outputs.build_time }}'" \
+          -o "dist/${BINARY_NAME}" \
+          ./cmd/gitsync
+
+        # Create archive
+        cd dist
+        if [ "${{ matrix.goos }}" = "windows" ]; then
+          zip "${BINARY_NAME%.exe}.zip" "${BINARY_NAME}"
+          echo "archive=${BINARY_NAME%.exe}.zip" >> $GITHUB_ENV
+        else
+          tar -czf "${BINARY_NAME}.tar.gz" "${BINARY_NAME}"
+          echo "archive=${BINARY_NAME}.tar.gz" >> $GITHUB_ENV
+        fi
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: gitsync-${{ matrix.name }}
+        path: dist/${{ env.archive }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Get version
+      id: version
+      run: |
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          echo "tag=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+        elif [ -f ".version" ]; then
+          # Read version from .version file
+          VERSION=$(grep "^version:" .version | cut -d' ' -f2)
+          echo "version=v${VERSION}" >> $GITHUB_OUTPUT
+          echo "tag=v${VERSION}" >> $GITHUB_OUTPUT
+        else
+          echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Download all artifacts
+      uses: actions/download-artifact@v3
+      with:
+        path: artifacts
+
+    - name: Prepare release assets
+      run: |
+        mkdir -p release
+        find artifacts -name "*.zip" -o -name "*.tar.gz" | while read file; do
+          cp "$file" release/
+        done
+        ls -la release/
+
+    - name: Generate changelog
+      id: changelog
+      run: |
+        cat > release_notes.md << 'EOF'
+        ## GitSync ${{ steps.version.outputs.version }}
+
+        ### Downloads
+
+        Choose the appropriate binary for your platform:
+
+        | Platform | Architecture | Download |
+        |----------|--------------|----------|
+        | Windows | x64 | [gitsync-${{ steps.version.outputs.version }}-windows-amd64.zip](https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.tag }}/gitsync-${{ steps.version.outputs.version }}-windows-amd64.zip) |
+        | Windows | ARM64 | [gitsync-${{ steps.version.outputs.version }}-windows-arm64.zip](https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.tag }}/gitsync-${{ steps.version.outputs.version }}-windows-arm64.zip) |
+        | macOS | Intel | [gitsync-${{ steps.version.outputs.version }}-darwin-amd64.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.tag }}/gitsync-${{ steps.version.outputs.version }}-darwin-amd64.tar.gz) |
+        | macOS | Apple Silicon | [gitsync-${{ steps.version.outputs.version }}-darwin-arm64.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.tag }}/gitsync-${{ steps.version.outputs.version }}-darwin-arm64.tar.gz) |
+        | Linux | x64 | [gitsync-${{ steps.version.outputs.version }}-linux-amd64.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.tag }}/gitsync-${{ steps.version.outputs.version }}-linux-amd64.tar.gz) |
+        | Linux | ARM64 | [gitsync-${{ steps.version.outputs.version }}-linux-arm64.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.tag }}/gitsync-${{ steps.version.outputs.version }}-linux-arm64.tar.gz) |
+
+        ### Installation
+
+        1. Download the appropriate binary for your platform
+        2. Extract the archive
+        3. Make the binary executable (Linux/macOS): `chmod +x gitsync`
+        4. Move to a directory in your PATH (optional)
+
+        ### Quick Start
+
+        ```bash
+        # Generate example configuration
+        gitsync -generate-config > gitsync.toml
+
+        # Edit gitsync.toml with your repositories and credentials
+
+        # Validate configuration
+        gitsync -validate -config gitsync.toml
+
+        # Run service
+        gitsync -config gitsync.toml
+        ```
+
+        ### What's New
+
+        - Git repository synchronization across multiple platforms
+        - Cron-based scheduling with flexible expressions
+        - BBolt embedded database for transaction tracking
+        - Support for multiple authentication methods (tokens, SSH keys)
+        - Comprehensive logging and monitoring
+        - Cross-platform support (Windows, macOS, Linux)
+
+        See the [README](https://github.com/${{ github.repository }}/blob/main/README.md) for complete documentation.
+        EOF
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ steps.version.outputs.tag }}
+        name: GitSync ${{ steps.version.outputs.version }}
+        body_path: release_notes.md
+        files: release/*
+        draft: false
+        prerelease: false
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

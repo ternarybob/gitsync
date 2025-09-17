@@ -1,0 +1,38 @@
+# GitSync Development Configuration
+
+[service]
+name = "gitsync"
+environment = "development"
+
+[[jobs]]
+name = "dev-sync"
+description = "Development repository synchronization"
+schedule = "0 */2 * * * *"  # Every 2 minutes for testing
+enabled = true
+timeout = "5m"
+
+  [[jobs.repos]]
+  name = "test-repo"
+  source = "https://github.com/example/test-repo.git"
+  targets = ["https://gitlab.com/example/test-repo.git"]
+  branch = "main"
+
+  [jobs.git]
+  username = "dev-bot"
+  token_env_var = "DEV_TOKEN"
+  commit_author = "GitSync Development"
+  commit_email = "dev@example.com"
+
+[store]
+path = "./data/gitsync.db"
+bucket_name = "sync_transactions"
+max_transactions = 100
+retention_days = 7
+
+[logging]
+level = "debug"
+format = "text"
+output = "stdout"
+max_size = 10
+max_backups = 3
+max_age = 7
