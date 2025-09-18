@@ -147,7 +147,7 @@ if [ -n "$ARCH" ]; then
 fi
 
 # Build flags
-LDFLAGS="-X github.com/ternarybob/gitsync/internal/version.Version=$VERSION -X 'github.com/ternarybob/gitsync/internal/version.Build=$BUILD_TIME'"
+LDFLAGS="-X github.com/ternarybob/gitsync/internal/common.Version=$VERSION -X 'github.com/ternarybob/gitsync/internal/common.Build=$BUILD_TIME'"
 
 if [ "$RELEASE" = true ]; then
     echo -e "\n${YELLOW}Building release binary...${NC}"

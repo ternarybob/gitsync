@@ -138,7 +138,8 @@ try {
     }
 
     # Determine output binary name based on target OS
-    if ($OS -eq "windows" -or (-not $OS -and $env:GOOS -eq "windows") -or (-not $OS -and -not $env:GOOS -and $IsWindows)) {
+    $isWindowsOS = [System.Environment]::OSVersion.Platform -eq "Win32NT"
+    if ($OS -eq "windows" -or (-not $OS -and $env:GOOS -eq "windows") -or (-not $OS -and -not $env:GOOS -and $isWindowsOS)) {
         $outputName = "gitsync.exe"
     }
     elseif ($OS -eq "darwin" -or (-not $OS -and $env:GOOS -eq "darwin")) {
@@ -164,22 +165,21 @@ try {
         "-o", $outputPath
     )
 
-    # Add ldflags
-    $ldflags = @(
-        "-X github.com/ternarybob/gitsync/internal/version.Version=$Version",
-        "-X github.com/ternarybob/gitsync/internal/version.Build=$buildTime"
-    )
+    # Add ldflags - same format as bash script
+    $versionFlag = "-X github.com/ternarybob/gitsync/internal/common.Version=$Version"
+    $buildFlag = "-X 'github.com/ternarybob/gitsync/internal/common.Build=$buildTime'"
+    $ldflags = "$versionFlag $buildFlag"
 
     if ($Release) {
         Write-Host "`nBuilding release binary..." -ForegroundColor Yellow
-        $ldflags += @("-s", "-w")
+        $ldflags += " -s -w"
         $buildArgs += "-trimpath"
     }
     else {
         Write-Host "`nBuilding development binary..." -ForegroundColor Yellow
     }
 
-    $buildArgs += "-ldflags", ($ldflags -join " ")
+    $buildArgs += "-ldflags", $ldflags
 
     if ($Verbose) {
         $buildArgs += "-v"

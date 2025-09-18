@@ -7,29 +7,25 @@ import (
 	"time"
 
 	"github.com/robfig/cron/v3"
-	"github.com/ternarybob/gitsync/internal/config"
-	"github.com/ternarybob/gitsync/internal/logger"
-	"github.com/ternarybob/gitsync/internal/store"
+	"github.com/ternarybob/gitsync/internal/common"
 	gitsync "github.com/ternarybob/gitsync/internal/sync"
 )
 
 type Scheduler struct {
 	cron   *cron.Cron
 	jobs   map[string]cron.EntryID
-	store  *store.Store
-	config *config.Config
+	config *common.Config
 	mu     sync.RWMutex
 	ctx    context.Context
 	cancel context.CancelFunc
 }
 
-func New(cfg *config.Config, s *store.Store) *Scheduler {
+func New(cfg *common.Config) *Scheduler {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	return &Scheduler{
 		cron:   cron.New(cron.WithSeconds()),
 		jobs:   make(map[string]cron.EntryID),
-		store:  s,
 		config: cfg,
 		ctx:    ctx,
 		cancel: cancel,
@@ -37,17 +33,23 @@ func New(cfg *config.Config, s *store.Store) *Scheduler {
 }
 
 func (s *Scheduler) Start() error {
-	logger.Info("Starting scheduler")
+	common.Info("Starting scheduler")
 
-	for _, job := range s.config.Jobs {
-		if !job.Enabled {
-			logger.WithField("job", job.Name).Info("Job is disabled, skipping")
+	for _, jobName := range s.config.Jobs.Names {
+		jobConfig, exists := s.config.GetJobConfig(jobName)
+		if !exists {
+			common.WithField("job", jobName).Error("Job definition not found")
 			continue
 		}
 
-		if err := s.scheduleJob(&job); err != nil {
-			logger.WithFields(map[string]interface{}{
-				"job":   job.Name,
+		if !jobConfig.Enabled {
+			common.WithField("job", jobName).Info("Job is disabled, skipping")
+			continue
+		}
+
+		if err := s.scheduleJob(jobName, jobConfig); err != nil {
+			common.WithFields(map[string]interface{}{
+				"job":   jobName,
 				"error": err,
 			}).Error("Failed to schedule job")
 			continue
@@ -56,76 +58,74 @@ func (s *Scheduler) Start() error {
 
 	s.cron.Start()
 
-	go s.cleanupLoop()
-
-	logger.Infof("Scheduler started with %d active jobs", len(s.jobs))
+	common.Infof("Scheduler started with %d active jobs", len(s.jobs))
 	return nil
 }
 
 func (s *Scheduler) Stop() {
-	logger.Info("Stopping scheduler")
+	common.Info("Stopping scheduler")
 
 	s.cancel()
 
 	ctx := s.cron.Stop()
 	<-ctx.Done()
 
-	logger.Info("Scheduler stopped")
+	common.Info("Scheduler stopped")
 }
 
-func (s *Scheduler) scheduleJob(jobConfig *config.JobConfig) error {
+func (s *Scheduler) scheduleJob(jobName string, jobConfig *common.JobConfig) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if _, exists := s.jobs[jobConfig.Name]; exists {
-		logger.WithField("job", jobConfig.Name).Warn("Job already scheduled")
+	if _, exists := s.jobs[jobName]; exists {
+		common.WithField("job", jobName).Warn("Job already scheduled")
 		return nil
 	}
 
-	syncer, err := gitsync.NewSyncer(jobConfig, s.store)
+	syncer, err := gitsync.NewSyncer(jobName, jobConfig)
 	if err != nil {
 		return fmt.Errorf("failed to create syncer: %w", err)
 	}
 
-	jobFunc := s.createJobFunc(jobConfig, syncer)
+	jobFunc := s.createJobFunc(jobName, jobConfig, syncer)
 
-	entryID, err := s.cron.AddFunc(jobConfig.Schedule, jobFunc)
+	entryID, err := s.cron.AddFunc(s.config.Jobs.Schedule, jobFunc)
 	if err != nil {
 		return fmt.Errorf("failed to add cron job: %w", err)
 	}
 
-	s.jobs[jobConfig.Name] = entryID
+	s.jobs[jobName] = entryID
 
-	logger.WithFields(map[string]interface{}{
-		"job":      jobConfig.Name,
-		"schedule": jobConfig.Schedule,
+	common.WithFields(map[string]interface{}{
+		"job":      jobName,
+		"schedule": s.config.Jobs.Schedule,
 	}).Info("Job scheduled successfully")
 
 	return nil
 }
 
-func (s *Scheduler) createJobFunc(jobConfig *config.JobConfig, syncer *gitsync.Syncer) func() {
+func (s *Scheduler) createJobFunc(jobName string, jobConfig *common.JobConfig, syncer *gitsync.Syncer) func() {
 	return func() {
-		logger.WithField("job", jobConfig.Name).Info("Executing scheduled job")
+		common.WithField("job", jobName).Info("Executing scheduled job")
 
 		ctx := s.ctx
-		if jobConfig.Timeout > 0 {
+		if s.config.Jobs.Timeout > 0 {
 			var cancel context.CancelFunc
-			ctx, cancel = context.WithTimeout(s.ctx, jobConfig.Timeout)
+			ctx, cancel = context.WithTimeout(s.ctx, s.config.Jobs.Timeout)
 			defer cancel()
 		}
 
 		startTime := time.Now()
 
 		if err := syncer.SyncAll(ctx); err != nil {
-			logger.WithFields(map[string]interface{}{
-				"job":      jobConfig.Name,
+			common.WithFields(map[string]interface{}{
+				"job":      jobName,
 				"error":    err,
 				"duration": time.Since(startTime).Seconds(),
 			}).Error("Job execution failed")
 		} else {
-			logger.WithFields(map[string]interface{}{
-				"job":      jobConfig.Name,
+			common.WithFields(map[string]interface{}{
+				"job":      jobName,
 				"duration": time.Since(startTime).Seconds(),
 			}).Info("Job execution completed")
 		}
@@ -133,24 +133,24 @@ func (s *Scheduler) createJobFunc(jobConfig *config.JobConfig, syncer *gitsync.S
 }
 
 func (s *Scheduler) RunJobNow(jobName string) error {
-	for _, job := range s.config.Jobs {
-		if job.Name == jobName {
-			syncer, err := gitsync.NewSyncer(&job, s.store)
-			if err != nil {
-				return fmt.Errorf("failed to create syncer: %w", err)
-			}
-
-			ctx := context.Background()
-			if job.Timeout > 0 {
-				var cancel context.CancelFunc
-				ctx, cancel = context.WithTimeout(ctx, job.Timeout)
-				defer cancel()
-			}
-
-			return syncer.SyncAll(ctx)
-		}
+	jobConfig, exists := s.config.GetJobConfig(jobName)
+	if !exists {
+		return fmt.Errorf("job not found: %s", jobName)
 	}
-	return fmt.Errorf("job not found: %s", jobName)
+
+	syncer, err := gitsync.NewSyncer(jobName, jobConfig)
+	if err != nil {
+		return fmt.Errorf("failed to create syncer: %w", err)
+	}
+
+	ctx := context.Background()
+	if s.config.Jobs.Timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, s.config.Jobs.Timeout)
+		defer cancel()
+	}
+
+	return syncer.SyncAll(ctx)
 }
 
 func (s *Scheduler) GetJobStatus(jobName string) (map[string]interface{}, error) {
@@ -168,11 +168,6 @@ func (s *Scheduler) GetJobStatus(jobName string) (map[string]interface{}, error)
 	status["job_name"] = jobName
 	status["next_run"] = entry.Next
 	status["prev_run"] = entry.Prev
-
-	transactions, err := s.store.GetTransactionsByJob(jobName, 10)
-	if err == nil {
-		status["recent_transactions"] = transactions
-	}
 
 	return status, nil
 }
@@ -194,23 +189,4 @@ func (s *Scheduler) GetAllJobsStatus() []map[string]interface{} {
 	}
 
 	return statuses
-}
-
-func (s *Scheduler) cleanupLoop() {
-	ticker := time.NewTicker(24 * time.Hour)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-s.ctx.Done():
-			return
-		case <-ticker.C:
-			if s.config.Store.RetentionDays > 0 {
-				logger.Info("Running transaction cleanup")
-				if err := s.store.CleanupOldTransactions(s.config.Store.RetentionDays); err != nil {
-					logger.WithField("error", err).Error("Failed to cleanup old transactions")
-				}
-			}
-		}
-	}
 }

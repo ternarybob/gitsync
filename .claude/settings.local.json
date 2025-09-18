@@ -13,7 +13,12 @@
       "Bash(gofmt:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(powershell.exe:*)",
+      "Bash(powershell:*)",
+      "Bash(./gitsync.exe:*)",
+      "Bash(go mod download:*)",
+      "Bash(go run:*)"
     ],
     "deny": [],
     "ask": []
