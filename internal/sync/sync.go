@@ -32,25 +32,25 @@ func NewSyncer(jobName string, jobConfig *common.JobConfig) (*Syncer, error) {
 }
 
 func (s *Syncer) SyncAll(ctx context.Context) error {
-	common.WithField("job", s.jobName).Info("Starting sync job")
+	startTime := time.Now()
+
+	// Use direct logging functions that work
+	common.Infof("=== STARTING SYNC JOB: %s ===", s.jobName)
+	common.Infof("Job: %s | Source: %s | Time: %s", s.jobName, s.jobConfig.Source, startTime.Format("2006-01-02 15:04:05"))
 
 	if err := s.syncJob(ctx); err != nil {
-		common.WithFields(map[string]interface{}{
-			"job":    s.jobName,
-			"source": s.jobConfig.Source,
-			"error":  err,
-		}).Error("Failed to sync job")
+		duration := time.Since(startTime)
+		common.Errorf("=== FAILED SYNC JOB: %s === Duration: %v | Error: %v", s.jobName, duration, err)
 		return err
 	}
 
+	duration := time.Since(startTime)
+	common.Infof("=== COMPLETED SYNC JOB: %s === Duration: %v", s.jobName, duration)
 	return nil
 }
 
 func (s *Syncer) syncJob(ctx context.Context) error {
-	common.WithFields(map[string]interface{}{
-		"job":    s.jobName,
-		"source": s.jobConfig.Source,
-	}).Info("Syncing repository")
+	common.Infof("Syncing repository: %s from %s", s.jobName, s.jobConfig.Source)
 
 	repoDir := filepath.Join(s.tempDir, sanitizeName(s.jobConfig.Source))
 
@@ -91,6 +91,13 @@ func (s *Syncer) syncJob(ctx context.Context) error {
 		"job":      s.jobName,
 		"branches": branchesToSync,
 	}).Info("Found branches to sync")
+
+	// Rewrite commit history if author replacement is configured
+	if s.jobConfig.RewriteHistory && len(s.jobConfig.AuthorReplace) > 0 {
+		if err := s.rewriteCommitAuthors(ctx, repoDir); err != nil {
+			return fmt.Errorf("failed to rewrite commit authors: %w", err)
+		}
+	}
 
 	// Sync each branch to all targets
 	for _, branch := range branchesToSync {
@@ -300,13 +307,6 @@ func (s *Syncer) setupGitAuth() error {
 		os.Setenv("GIT_SSH_COMMAND", fmt.Sprintf("ssh -i %s -o StrictHostKeyChecking=no", s.jobConfig.SSHKeyPath))
 	}
 
-	if s.jobConfig.CommitAuthor != "" {
-		exec.Command("git", "config", "--global", "user.name", s.jobConfig.CommitAuthor).Run()
-	}
-	if s.jobConfig.CommitEmail != "" {
-		exec.Command("git", "config", "--global", "user.email", s.jobConfig.CommitEmail).Run()
-	}
-
 	return nil
 }
 
@@ -323,6 +323,56 @@ func dirExists(path string) (bool, error) {
 		return false, nil
 	}
 	return false, err
+}
+
+// rewriteCommitAuthors rewrites commit history to replace author information
+func (s *Syncer) rewriteCommitAuthors(ctx context.Context, repoDir string) error {
+	common.WithFields(map[string]interface{}{
+		"job":          s.jobName,
+		"replacements": len(s.jobConfig.AuthorReplace),
+	}).Info("Rewriting commit authors")
+
+	// Build the environment filter script for git filter-branch
+	var filterScript strings.Builder
+	for _, replacement := range s.jobConfig.AuthorReplace {
+		if replacement.FromEmail != "" {
+			filterScript.WriteString(fmt.Sprintf(`
+if [ "$GIT_AUTHOR_EMAIL" = "%s" ]; then
+    export GIT_AUTHOR_NAME="%s"
+    export GIT_AUTHOR_EMAIL="%s"
+    export GIT_COMMITTER_NAME="%s"
+    export GIT_COMMITTER_EMAIL="%s"
+fi`, replacement.FromEmail, replacement.ToName, replacement.ToEmail, replacement.ToName, replacement.ToEmail))
+		}
+		if replacement.FromName != "" && replacement.FromEmail == "" {
+			filterScript.WriteString(fmt.Sprintf(`
+if [ "$GIT_AUTHOR_NAME" = "%s" ]; then
+    export GIT_AUTHOR_NAME="%s"
+    export GIT_AUTHOR_EMAIL="%s"
+    export GIT_COMMITTER_NAME="%s"
+    export GIT_COMMITTER_EMAIL="%s"
+fi`, replacement.FromName, replacement.ToName, replacement.ToEmail, replacement.ToName, replacement.ToEmail))
+		}
+	}
+
+	if filterScript.Len() == 0 {
+		return nil // No replacements to make
+	}
+
+	// Execute git filter-branch with the environment filter
+	cmd := exec.CommandContext(ctx, "git", "filter-branch", "-f", "--env-filter", filterScript.String(), "--", "--all")
+	cmd.Dir = repoDir
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("git filter-branch failed: %w\nOutput: %s", err, string(output))
+	}
+
+	common.WithFields(map[string]interface{}{
+		"job": s.jobName,
+	}).Info("Successfully rewrote commit authors")
+
+	return nil
 }
 
 func sanitizeName(name string) string {

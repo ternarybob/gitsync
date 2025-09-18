@@ -54,6 +54,15 @@ func (s *Scheduler) Start() error {
 			}).Error("Failed to schedule job")
 			continue
 		}
+
+		// Run job immediately on startup
+		common.WithField("job", jobName).Info("Running job immediately")
+		if err := s.RunJobNow(jobName); err != nil {
+			common.WithFields(map[string]interface{}{
+				"job":   jobName,
+				"error": err,
+			}).Error("Failed to run job immediately")
+		}
 	}
 
 	s.cron.Start()

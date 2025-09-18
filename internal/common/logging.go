@@ -3,23 +3,79 @@ package common
 import (
 	"fmt"
 	"github.com/ternarybob/arbor"
+	"github.com/ternarybob/arbor/models"
+	"os"
+	"path/filepath"
+	"time"
 )
 
 var logger arbor.ILogger
+var logConfig *LoggingConfig
 
 func InitLogger(config *LoggingConfig) error {
+	logConfig = config
+
+	// Get the directory where the executable is located
+	execPath, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("failed to get executable path: %w", err)
+	}
+	execDir := filepath.Dir(execPath)
+
+	// Create logs directory in the same directory as the executable
+	logsDir := filepath.Join(execDir, "logs")
+	if err := os.MkdirAll(logsDir, 0755); err != nil {
+		return fmt.Errorf("failed to create logs directory: %w", err)
+	}
+
+	// Initialize arbor logger
 	logger = arbor.NewLogger()
+
+	// Log directory creation and logger initialization
+	fmt.Printf("Logs directory created: %s\n", logsDir)
+
+	// Configure file logging if requested
+	if config.Output == "both" || config.Output == "file" || config.Output == "" {
+		// Create timestamped log file
+		logFile := filepath.Join(logsDir, fmt.Sprintf("gitsync-%s.log", time.Now().Format("2006-01-02")))
+		fmt.Printf("Log file: %s\n", logFile)
+
+		logger = logger.WithFileWriter(models.WriterConfiguration{
+			Type:       models.LogWriterTypeFile,
+			FileName:   logFile,
+			TimeFormat: "2006-01-02 15:04:05.000",
+			MaxSize:    int64(config.MaxSize * 1024 * 1024), // Convert MB to bytes
+			MaxBackups: config.MaxBackups,
+		})
+	}
+
+	// Configure console logging if requested
+	if config.Output == "both" || config.Output == "console" || config.Output == "" {
+		logger = logger.WithConsoleWriter(models.WriterConfiguration{
+			Type:             models.LogWriterTypeConsole,
+			TimeFormat:       "15:04:05",
+			DisableTimestamp: false,
+		})
+	}
+
+	// Set log level
+	logger = logger.WithLevelFromString(config.Level)
+
+	// Test logging immediately to verify it's working
+	fmt.Printf("Logger initialized successfully\n")
+	logger.Info().Msg("GitSync logger initialized")
+
 	return nil
 }
 
 func DefaultLoggingConfig() *LoggingConfig {
 	return &LoggingConfig{
-		Level:       "debug",
-		Format:      "text",
-		Output:      "stdout",
-		MaxFileSize: 100,
-		MaxBackups:  3,
-		MaxAge:      3,
+		Level:      "info",
+		Format:     "json",
+		Output:     "both",
+		MaxSize:    100,
+		MaxBackups: 3,
+		MaxAge:     7,
 	}
 }
 
@@ -119,17 +175,15 @@ func Warnf(format string, args ...interface{}) {
 
 func Fatal(msg string) {
 	if logger != nil {
-		logger.Error().Msg(msg)
+		logger.Fatal().Msg(msg)
 	}
-	// Note: arbor doesn't have Fatal level, using Error and manual exit
 	panic(msg)
 }
 
 func Fatalf(format string, args ...interface{}) {
 	if logger != nil {
-		logger.Error().Msg(fmt.Sprintf(format, args...))
+		logger.Fatal().Msg(fmt.Sprintf(format, args...))
 	}
-	// Note: arbor doesn't have Fatal level, using Error and manual exit
 	panic(fmt.Sprintf(format, args...))
 }
 

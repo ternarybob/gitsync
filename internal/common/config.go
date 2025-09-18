@@ -27,29 +27,36 @@ type JobsConfig struct {
 	Timeout  time.Duration `toml:"timeout"`
 }
 
+type AuthorReplacement struct {
+	FromEmail string `toml:"from_email"`
+	FromName  string `toml:"from_name"`
+	ToEmail   string `toml:"to_email"`
+	ToName    string `toml:"to_name"`
+}
+
 type JobConfig struct {
-	Description  string   `toml:"description"`
-	Enabled      bool     `toml:"enabled"`
-	Source       string   `toml:"source"`
-	Targets      []string `toml:"targets"`
-	Branches     []string `toml:"branches"`
-	Override     bool     `toml:"override"`
-	GitUsername  string   `toml:"git_username"`
-	GitToken     string   `toml:"git_token"`
-	GitTokenEnv  string   `toml:"git_token_env"`
-	SSHKeyPath   string   `toml:"ssh_key_path"`
-	SSHKeyEnv    string   `toml:"ssh_key_env"`
-	CommitAuthor string   `toml:"commit_author"`
-	CommitEmail  string   `toml:"commit_email"`
+	Description    string              `toml:"description"`
+	Enabled        bool                `toml:"enabled"`
+	Source         string              `toml:"source"`
+	Targets        []string            `toml:"targets"`
+	Branches       []string            `toml:"branches"`
+	Override       bool                `toml:"override"`
+	GitUsername    string              `toml:"git_username"`
+	GitToken       string              `toml:"git_token"`
+	GitTokenEnv    string              `toml:"git_token_env"`
+	SSHKeyPath     string              `toml:"ssh_key_path"`
+	SSHKeyEnv      string              `toml:"ssh_key_env"`
+	AuthorReplace  []AuthorReplacement `toml:"author_replace"`  // Replace existing commit authors
+	RewriteHistory bool                `toml:"rewrite_history"` // Enable commit rewriting
 }
 
 type LoggingConfig struct {
-	Level       string `toml:"level"`
-	Format      string `toml:"format"`
-	Output      string `toml:"output"`
-	MaxFileSize int    `toml:"max_file_size"`
-	MaxBackups  int    `toml:"max_backups"`
-	MaxAge      int    `toml:"max_age"`
+	Level      string `toml:"level"`
+	Format     string `toml:"format"`
+	Output     string `toml:"output"`
+	MaxSize    int    `toml:"max_size"`
+	MaxBackups int    `toml:"max_backups"`
+	MaxAge     int    `toml:"max_age"`
 }
 
 func DefaultConfig() *Config {
@@ -136,28 +143,42 @@ func parseConfig(rawConfig map[string]interface{}, config *Config) error {
 			}
 		case "logging":
 			if loggingMap, ok := value.(map[string]interface{}); ok {
-				config.Logging.Level = getString(loggingMap, "level", "debug")
-				config.Logging.Format = getString(loggingMap, "format", "text")
-				config.Logging.Output = getString(loggingMap, "output", "stdout")
-				config.Logging.MaxFileSize = getInt(loggingMap, "max_file_size", 100)
+				config.Logging.Level = getString(loggingMap, "level", "info")
+				config.Logging.Format = getString(loggingMap, "format", "json")
+				config.Logging.Output = getString(loggingMap, "output", "both")
+				config.Logging.MaxSize = getInt(loggingMap, "max_size", 100)
 				config.Logging.MaxBackups = getInt(loggingMap, "max_backups", 3)
-				config.Logging.MaxAge = getInt(loggingMap, "max_age", 3)
+				config.Logging.MaxAge = getInt(loggingMap, "max_age", 7)
 			}
 		default:
 			// Job definition
 			if jobMap, ok := value.(map[string]interface{}); ok {
 				jobConfig := &JobConfig{
-					Description:  getString(jobMap, "description", ""),
-					Enabled:      getBool(jobMap, "enabled", true),
-					Source:       getString(jobMap, "source", ""),
-					Override:     getBool(jobMap, "override", false),
-					GitUsername:  getString(jobMap, "git_username", ""),
-					GitToken:     getString(jobMap, "git_token", ""),
-					GitTokenEnv:  getString(jobMap, "git_token_env", ""),
-					SSHKeyPath:   getString(jobMap, "ssh_key_path", ""),
-					SSHKeyEnv:    getString(jobMap, "ssh_key_env", ""),
-					CommitAuthor: getString(jobMap, "commit_author", ""),
-					CommitEmail:  getString(jobMap, "commit_email", ""),
+					Description:    getString(jobMap, "description", ""),
+					Enabled:        getBool(jobMap, "enabled", true),
+					Source:         getString(jobMap, "source", ""),
+					Override:       getBool(jobMap, "override", false),
+					GitUsername:    getString(jobMap, "git_username", ""),
+					GitToken:       getString(jobMap, "git_token", ""),
+					GitTokenEnv:    getString(jobMap, "git_token_env", ""),
+					SSHKeyPath:     getString(jobMap, "ssh_key_path", ""),
+					SSHKeyEnv:      getString(jobMap, "ssh_key_env", ""),
+					RewriteHistory: getBool(jobMap, "rewrite_history", false),
+				}
+
+				// Parse author replacement rules
+				if authorReplaceArray, exists := jobMap["author_replace"].([]interface{}); exists {
+					for _, replacement := range authorReplaceArray {
+						if replaceMap, ok := replacement.(map[string]interface{}); ok {
+							authorReplace := AuthorReplacement{
+								FromEmail: getString(replaceMap, "from_email", ""),
+								FromName:  getString(replaceMap, "from_name", ""),
+								ToEmail:   getString(replaceMap, "to_email", ""),
+								ToName:    getString(replaceMap, "to_name", ""),
+							}
+							jobConfig.AuthorReplace = append(jobConfig.AuthorReplace, authorReplace)
+						}
+					}
 				}
 
 				// Parse targets array

@@ -65,6 +65,28 @@ try {
     Write-Host "Environment: $Environment" -ForegroundColor Yellow
     Write-Host "Current Location: $(Get-Location)"
 
+    # Check for running GitSync processes and kill them
+    Write-Host "`nChecking for running GitSync processes..." -ForegroundColor Yellow
+    $runningProcesses = Get-Process -Name "gitsync*" -ErrorAction SilentlyContinue
+    if ($runningProcesses) {
+        Write-Host "Found $($runningProcesses.Count) running GitSync process(es). Terminating..." -ForegroundColor Red
+        foreach ($process in $runningProcesses) {
+            Write-Host "  Killing process: $($process.Name) (PID: $($process.Id))" -ForegroundColor Red
+            try {
+                $process.Kill()
+                $process.WaitForExit(5000)  # Wait up to 5 seconds for graceful exit
+            }
+            catch {
+                Write-Warning "Failed to kill process $($process.Id): $_"
+            }
+        }
+        Start-Sleep -Seconds 1  # Brief pause to ensure processes are fully terminated
+        Write-Host "All GitSync processes terminated" -ForegroundColor Green
+    }
+    else {
+        Write-Host "No running GitSync processes found" -ForegroundColor Green
+    }
+
     # Validate environment
     $validEnvironments = @("dev", "staging", "prod")
     if ($Environment -notin $validEnvironments) {

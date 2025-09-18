@@ -39,8 +39,6 @@ branches = ["main"]          # Only sync main branch
 override = false             # Safe push (no force) for main branch
 git_username = "sync-bot"
 git_token = "${GITHUB_TOKEN}"  # From environment variable
-commit_author = "Git Sync Bot"
-commit_email = "sync@example.com"
 
 # Individual job: Sync feature branches with wildcards
 ["feature-sync"]
@@ -52,8 +50,6 @@ branches = ["feature-*", "*-sync", "hotfix/*"]  # Wildcard patterns
 override = true              # Force push allowed for feature branches
 git_username = "backup-user"
 git_token = "${BACKUP_TOKEN}"
-commit_author = "Backup Bot"
-commit_email = "backup@example.com"
 
 # Individual job: Bidirectional sync (upstream)
 ["bidirectional-up"]
@@ -65,8 +61,6 @@ branches = ["*-sync"]        # Only sync-tagged branches back
 override = true              # Force push for sync branches
 git_username = "sync-bot"
 git_token = "${GITHUB_TOKEN}"
-commit_author = "Sync Bot"
-commit_email = "sync@example.com"
 
 # SSH authentication example (alternative to token)
 ["ssh-example"]
@@ -79,8 +73,26 @@ override = false
 ssh_key_path = "/home/user/.ssh/id_rsa"
 # OR use environment variable for SSH key path:
 # ssh_key_env = "SSH_KEY_PATH"
-commit_author = "SSH Bot"
-commit_email = "ssh@example.com"
+
+# Author replacement example (for private->primary repo workflows)
+["author-replacement"]
+description = "Replace commit authors during sync (private->primary)"
+enabled = false
+source = "https://github.com/contractor/private-repo.git"
+targets = ["https://github.com/company/primary-repo.git"]
+branches = ["*-sync"]        # Only sync tagged branches
+override = true              # Required for rewritten history
+rewrite_history = true       # Enable author replacement
+
+# Author replacement rules
+[[author-replacement.author_replace]]
+from_email = "contractor@external.com"
+from_name = "External Contractor"
+to_email = "employee@company.com"
+to_name = "Company Employee"
+
+git_username = "company-sync"
+git_token = "${GITHUB_TOKEN}"
 
 # Logging configuration
 [logging]

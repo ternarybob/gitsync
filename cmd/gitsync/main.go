@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
 	"github.com/ternarybob/gitsync/internal/common"
@@ -14,7 +15,7 @@ import (
 
 func main() {
 	var (
-		configPath     = flag.String("config", "gitsync.toml", "Path to configuration file")
+		configPath     = flag.String("config", "", "Path to configuration file (defaults to gitsync.toml in executable directory)")
 		validateConfig = flag.Bool("validate", false, "Validate configuration file and exit")
 		showVersion    = flag.Bool("version", false, "Show version and exit")
 		runJob         = flag.String("run-job", "", "Run a specific job immediately and exit")
@@ -27,7 +28,27 @@ func main() {
 		os.Exit(0)
 	}
 
-	cfg, err := common.Load(*configPath)
+	// Determine config file path
+	finalConfigPath := *configPath
+	if finalConfigPath == "" {
+		// Default to gitsync.toml in the same directory as the executable
+		execPath, err := os.Executable()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to get executable path: %v\n", err)
+			os.Exit(1)
+		}
+		execDir := filepath.Dir(execPath)
+		finalConfigPath = filepath.Join(execDir, "gitsync.toml")
+	}
+
+	// Check if config file exists
+	if _, err := os.Stat(finalConfigPath); os.IsNotExist(err) {
+		fmt.Fprintf(os.Stderr, "Configuration file not found: %s\n", finalConfigPath)
+		fmt.Fprintf(os.Stderr, "Create a gitsync.toml file in the same directory as the executable, or specify one with -config\n")
+		os.Exit(1)
+	}
+
+	cfg, err := common.Load(finalConfigPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to load configuration: %v\n", err)
 		os.Exit(1)

@@ -18,7 +18,17 @@
       "Bash(powershell:*)",
       "Bash(./gitsync.exe:*)",
       "Bash(go mod download:*)",
-      "Bash(go run:*)"
+      "Bash(go run:*)",
+      "Bash(start /B ./bin/gitsync.exe:*)",
+      "Bash(tasklist:*)",
+      "Bash(cat:*)",
+      "mcp__Ref__ref_search_documentation",
+      "WebSearch",
+      "mcp__Ref__ref_read_url",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Read(//c/development/ternarybob/arbor/**)",
+      "Bash(dir:*)",
+      "Read(//c/Users/bobmc/Pictures/Screenshots 1/**)"
     ],
     "deny": [],
     "ask": []
