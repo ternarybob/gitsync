@@ -1,80 +1,92 @@
-# GitSync Configuration
+# GitSync Configuration Example
 #
-# This file configures the GitSync service for synchronizing git repositories.
+# This file demonstrates the GitSync configuration structure.
+# GitSync synchronizes git repositories with branch filtering and bidirectional support.
 #
-# Environment variables can be used with ${VAR} syntax.
-# Cron expressions: https://crontab.guru/
+# Environment variables: Use ${VAR} or ${VAR:-default} syntax
+# Cron expressions use robfig/cron with seconds support
 #
 # Schedule format: "SEC MIN HOUR DAY MONTH WEEKDAY"
 # Examples:
+#   "*/30 * * * * *" - Every 30 seconds
 #   "0 */5 * * * *"  - Every 5 minutes
 #   "0 0 */2 * * *"  - Every 2 hours
 #   "0 0 0 * * *"    - Daily at midnight
 #   "@hourly"        - Every hour
 #   "@daily"         - Every day at midnight
-#
 
+# Service configuration
 [service]
 name = "gitsync"
-environment = "development"
+environment = "development"  # development, staging, production
 
-[[jobs]]
-name = "main-sync"
-description = "Synchronize main repositories"
-schedule = "0 */5 * * * *"  # Every 5 minutes
+# Jobs configuration - shared settings for all jobs
+[jobs]
+names = ["main-sync", "feature-sync", "bidirectional-up"]  # List of job names to run
+schedule = "0 */5 * * * *"  # Every 5 minutes (with seconds field)
+timeout = "5m"               # Timeout for all jobs
+
+# Individual job: Sync main branch safely
+["main-sync"]
+description = "Sync main branch to multiple targets"
 enabled = true
-timeout = "5m"
+source = "https://github.com/myorg/project.git"
+targets = [
+  "https://gitlab.com/myorg/project.git",
+  "https://bitbucket.org/myorg/project.git"
+]
+branches = ["main"]          # Only sync main branch
+override = false             # Safe push (no force) for main branch
+git_username = "sync-bot"
+git_token = "${GITHUB_TOKEN}"  # From environment variable
+commit_author = "Git Sync Bot"
+commit_email = "sync@example.com"
 
-  [[jobs.repos]]
-  name = "my-project"
-  source = "https://github.com/myorg/my-project.git"
-  targets = [
-    "https://gitlab.com/myorg/my-project.git",
-    "https://bitbucket.org/myorg/my-project.git"
-  ]
-  branch = "main"
+# Individual job: Sync feature branches with wildcards
+["feature-sync"]
+description = "Sync feature branches with wildcard patterns"
+enabled = true
+source = "https://github.com/myorg/features.git"
+targets = ["https://backup.myorg.com/features.git"]
+branches = ["feature-*", "*-sync", "hotfix/*"]  # Wildcard patterns
+override = true              # Force push allowed for feature branches
+git_username = "backup-user"
+git_token = "${BACKUP_TOKEN}"
+commit_author = "Backup Bot"
+commit_email = "backup@example.com"
 
-  [[jobs.repos]]
-  name = "another-project"
-  source = "https://github.com/myorg/another-project.git"
-  targets = ["https://gitlab.com/myorg/another-project.git"]
-  branch = "master"
+# Individual job: Bidirectional sync (upstream)
+["bidirectional-up"]
+description = "Sync from backup back to primary (bidirectional)"
+enabled = false              # Disabled by default
+source = "https://backup.myorg.com/features.git"
+targets = ["https://github.com/myorg/features.git"]
+branches = ["*-sync"]        # Only sync-tagged branches back
+override = true              # Force push for sync branches
+git_username = "sync-bot"
+git_token = "${GITHUB_TOKEN}"
+commit_author = "Sync Bot"
+commit_email = "sync@example.com"
 
-  [jobs.git]
-  username = "git-sync-bot"
-  token_env_var = "GITHUB_TOKEN"  # Set GITHUB_TOKEN environment variable
-  commit_author = "Git Sync Bot"
-  commit_email = "gitsync@example.com"
+# SSH authentication example (alternative to token)
+["ssh-example"]
+description = "Example using SSH key authentication"
+enabled = false
+source = "git@github.com:myorg/private-repo.git"
+targets = ["git@gitlab.com:myorg/private-repo.git"]
+branches = ["main", "develop"]
+override = false
+ssh_key_path = "/home/user/.ssh/id_rsa"
+# OR use environment variable for SSH key path:
+# ssh_key_env = "SSH_KEY_PATH"
+commit_author = "SSH Bot"
+commit_email = "ssh@example.com"
 
-[[jobs]]
-name = "hourly-backup"
-description = "Hourly backup of critical repositories"
-schedule = "@hourly"
-enabled = false  # Disabled by default
-timeout = "10m"
-
-  [[jobs.repos]]
-  name = "critical-service"
-  source = "https://github.com/myorg/critical-service.git"
-  targets = ["https://backup.example.com/critical-service.git"]
-  branch = "production"
-
-  [jobs.git]
-  username = "backup-bot"
-  token_env_var = "BACKUP_TOKEN"
-  commit_author = "Backup Bot"
-  commit_email = "backup@example.com"
-
-[store]
-path = "./data/gitsync.db"
-bucket_name = "sync_transactions"
-max_transactions = 1000
-retention_days = 30
-
+# Logging configuration
 [logging]
-level = "info"
-format = "json"
-output = "stdout"
-max_size = 100
-max_backups = 3
-max_age = 28
+level = "info"               # debug, info, warn, error
+format = "text"              # text, json
+output = "both"              # stdout, both (console + file)
+max_file_size = 100          # Log file max size in MB
+max_backups = 3              # Number of backup log files
+max_age = 7                  # Days to retain log files

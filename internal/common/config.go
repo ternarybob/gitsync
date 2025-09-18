@@ -43,7 +43,6 @@ type JobConfig struct {
 	CommitEmail  string   `toml:"commit_email"`
 }
 
-
 type LoggingConfig struct {
 	Level       string `toml:"level"`
 	Format      string `toml:"format"`
@@ -186,7 +185,6 @@ func parseConfig(rawConfig map[string]interface{}, config *Config) error {
 	return nil
 }
 
-
 func getString(m map[string]interface{}, key, defaultValue string) string {
 	if v, ok := m[key].(string); ok {
 		return v
@@ -293,7 +291,6 @@ func (c *Config) GetEnabledJobs() []string {
 	return enabled
 }
 
-
 func (jc *JobConfig) ShouldSyncBranch(branchName string) bool {
 	// Check against all patterns in branches list
 	for _, pattern := range jc.Branches {
@@ -337,4 +334,3 @@ func matchesBranchPattern(branchName, pattern string) bool {
 	// Exact match
 	return branchName == pattern
 }
-
