@@ -1,4 +1,4 @@
-package sync
+package services
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ternarybob/arbor"
 	"github.com/ternarybob/gitsync/internal/common"
 )
 
@@ -16,6 +17,7 @@ type Syncer struct {
 	jobName   string
 	jobConfig *common.JobConfig
 	tempDir   string
+	logger    arbor.ILogger
 }
 
 func NewSyncer(jobName string, jobConfig *common.JobConfig) (*Syncer, error) {
@@ -28,6 +30,7 @@ func NewSyncer(jobName string, jobConfig *common.JobConfig) (*Syncer, error) {
 		jobName:   jobName,
 		jobConfig: jobConfig,
 		tempDir:   tempDir,
+		logger:    common.GetLogger(),
 	}, nil
 }
 
@@ -35,22 +38,22 @@ func (s *Syncer) SyncAll(ctx context.Context) error {
 	startTime := time.Now()
 
 	// Use direct logging functions that work
-	common.Infof("=== STARTING SYNC JOB: %s ===", s.jobName)
-	common.Infof("Job: %s | Source: %s | Time: %s", s.jobName, s.jobConfig.Source, startTime.Format("2006-01-02 15:04:05"))
+	s.logger.Info().Str("job", s.jobName).Msg("=== STARTING SYNC JOB ===")
+	s.logger.Info().Str("job", s.jobName).Str("source", s.jobConfig.Source).Str("start_time", startTime.Format("2006-01-02 15:04:05")).Msg("Job details")
 
 	if err := s.syncJob(ctx); err != nil {
 		duration := time.Since(startTime)
-		common.Errorf("=== FAILED SYNC JOB: %s === Duration: %v | Error: %v", s.jobName, duration, err)
+		s.logger.Error().Str("job", s.jobName).Dur("duration", duration).Err(err).Msg("=== FAILED SYNC JOB ===")
 		return err
 	}
 
 	duration := time.Since(startTime)
-	common.Infof("=== COMPLETED SYNC JOB: %s === Duration: %v", s.jobName, duration)
+	s.logger.Info().Str("job", s.jobName).Dur("duration", duration).Msg("=== COMPLETED SYNC JOB ===")
 	return nil
 }
 
 func (s *Syncer) syncJob(ctx context.Context) error {
-	common.Infof("Syncing repository: %s from %s", s.jobName, s.jobConfig.Source)
+	s.logger.Info().Str("job", s.jobName).Str("source", s.jobConfig.Source).Msg("Syncing repository")
 
 	repoDir := filepath.Join(s.tempDir, sanitizeName(s.jobConfig.Source))
 
@@ -81,16 +84,11 @@ func (s *Syncer) syncJob(ctx context.Context) error {
 	}
 
 	if len(branchesToSync) == 0 {
-		common.WithFields(map[string]interface{}{
-			"job": s.jobName,
-		}).Warn("No branches to sync")
+		s.logger.Warn().Str("job", s.jobName).Msg("No branches to sync")
 		return nil
 	}
 
-	common.WithFields(map[string]interface{}{
-		"job":      s.jobName,
-		"branches": branchesToSync,
-	}).Info("Found branches to sync")
+	s.logger.Info().Str("job", s.jobName).Str("branches", fmt.Sprintf("%v", branchesToSync)).Msg("Found branches to sync")
 
 	// Rewrite commit history if author replacement is configured
 	if s.jobConfig.RewriteHistory && len(s.jobConfig.AuthorReplace) > 0 {
@@ -102,11 +100,7 @@ func (s *Syncer) syncJob(ctx context.Context) error {
 	// Sync each branch to all targets
 	for _, branch := range branchesToSync {
 		if err := s.syncBranchToTargets(ctx, repoDir, branch); err != nil {
-			common.WithFields(map[string]interface{}{
-				"job":    s.jobName,
-				"branch": branch,
-				"error":  err,
-			}).Error("Failed to sync branch")
+			s.logger.Error().Str("job", s.jobName).Str("branch", branch).Err(err).Msg("Failed to sync branch")
 			continue
 		}
 	}
@@ -172,38 +166,21 @@ func (s *Syncer) syncBranchToTargets(ctx context.Context, repoDir string, branch
 	for _, target := range s.jobConfig.Targets {
 		startTime := time.Now()
 
-		common.WithFields(map[string]interface{}{
-			"job":    s.jobName,
-			"branch": branch,
-			"target": target,
-			"commit": commitHash,
-		}).Info("Starting sync to target")
+		s.logger.Info().Str("job", s.jobName).Str("branch", branch).Str("target", target).Str("commit", commitHash).Msg("Starting sync to target")
 
 		if err := s.pushToTarget(ctx, repoDir, target, branch); err != nil {
-			common.WithFields(map[string]interface{}{
-				"job":      s.jobName,
-				"branch":   branch,
-				"target":   target,
-				"error":    err,
-				"duration": time.Since(startTime).Seconds(),
-			}).Error("Failed to sync to target")
+			s.logger.Error().Str("job", s.jobName).Str("branch", branch).Str("target", target).Err(err).Float64("duration", time.Since(startTime).Seconds()).Msg("Failed to sync to target")
 			continue
 		}
 
-		common.WithFields(map[string]interface{}{
-			"job":      s.jobName,
-			"branch":   branch,
-			"target":   target,
-			"commit":   commitHash,
-			"duration": time.Since(startTime).Seconds(),
-		}).Info("Successfully synced to target")
+		s.logger.Info().Str("job", s.jobName).Str("branch", branch).Str("target", target).Str("commit", commitHash).Float64("duration", time.Since(startTime).Seconds()).Msg("Successfully synced to target")
 	}
 
 	return nil
 }
 
 func (s *Syncer) cloneRepository(ctx context.Context, repoDir string) error {
-	common.WithField("job", s.jobName).Debug("Cloning repository")
+	s.logger.Debug().Str("job", s.jobName).Msg("Cloning repository")
 
 	cmd := exec.CommandContext(ctx, "git", "clone", s.jobConfig.Source, repoDir)
 	if output, err := cmd.CombinedOutput(); err != nil {
@@ -214,7 +191,7 @@ func (s *Syncer) cloneRepository(ctx context.Context, repoDir string) error {
 }
 
 func (s *Syncer) updateRepository(ctx context.Context, repoDir string) error {
-	common.WithField("job", s.jobName).Debug("Updating repository")
+	s.logger.Debug().Str("job", s.jobName).Msg("Updating repository")
 
 	cmd := exec.CommandContext(ctx, "git", "fetch", "origin", "--prune")
 	cmd.Dir = repoDir
@@ -267,6 +244,22 @@ func (s *Syncer) pushToTarget(ctx context.Context, repoDir, target, branch strin
 		}
 	}
 
+	// Get current local commit hash
+	localCommit, err := s.getLatestCommit(ctx, repoDir)
+	if err != nil {
+		return fmt.Errorf("failed to get local commit hash: %w", err)
+	}
+
+	// Get remote commit hash from target
+	remoteCommit, err := s.getRemoteCommitHash(ctx, repoDir, targetName, branch)
+	if err != nil {
+		s.logger.Debug().Str("job", s.jobName).Str("branch", branch).Str("target", target).Msg("Could not get remote commit hash, proceeding with push")
+	} else if localCommit == remoteCommit {
+		// Hashes match, skip push
+		s.logger.Info().Str("job", s.jobName).Str("branch", branch).Str("target", target).Str("commit", localCommit).Msg("Skipping push - no changes detected (hashes match)")
+		return nil
+	}
+
 	// Use force push if override is enabled, otherwise regular push
 	if s.jobConfig.Override {
 		cmd = exec.CommandContext(ctx, "git", "push", targetName, fmt.Sprintf("%s:%s", branch, branch), "--force")
@@ -287,6 +280,24 @@ func (s *Syncer) getLatestCommit(ctx context.Context, repoDir string) (string, e
 	output, err := cmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("failed to get commit hash: %w", err)
+	}
+	return strings.TrimSpace(string(output)), nil
+}
+
+func (s *Syncer) getRemoteCommitHash(ctx context.Context, repoDir, remoteName, branch string) (string, error) {
+	// Fetch the remote to ensure we have the latest refs
+	cmd := exec.CommandContext(ctx, "git", "fetch", remoteName, branch)
+	cmd.Dir = repoDir
+	if _, err := cmd.CombinedOutput(); err != nil {
+		return "", fmt.Errorf("failed to fetch remote %s: %w", remoteName, err)
+	}
+
+	// Get the commit hash of the remote branch
+	cmd = exec.CommandContext(ctx, "git", "rev-parse", fmt.Sprintf("%s/%s", remoteName, branch))
+	cmd.Dir = repoDir
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("failed to get remote commit hash: %w", err)
 	}
 	return strings.TrimSpace(string(output)), nil
 }
@@ -327,10 +338,7 @@ func dirExists(path string) (bool, error) {
 
 // rewriteCommitAuthors rewrites commit history to replace author information
 func (s *Syncer) rewriteCommitAuthors(ctx context.Context, repoDir string) error {
-	common.WithFields(map[string]interface{}{
-		"job":          s.jobName,
-		"replacements": len(s.jobConfig.AuthorReplace),
-	}).Info("Rewriting commit authors")
+	s.logger.Info().Str("job", s.jobName).Int("replacements", len(s.jobConfig.AuthorReplace)).Msg("Rewriting commit authors")
 
 	// Build the environment filter script for git filter-branch
 	var filterScript strings.Builder
@@ -368,9 +376,7 @@ fi`, replacement.FromName, replacement.ToName, replacement.ToEmail, replacement.
 		return fmt.Errorf("git filter-branch failed: %w\nOutput: %s", err, string(output))
 	}
 
-	common.WithFields(map[string]interface{}{
-		"job": s.jobName,
-	}).Info("Successfully rewrote commit authors")
+	s.logger.Info().Str("job", s.jobName).Msg("Successfully rewrote commit authors")
 
 	return nil
 }

@@ -10,10 +10,12 @@ import (
 	"syscall"
 
 	"github.com/ternarybob/gitsync/internal/common"
-	"github.com/ternarybob/gitsync/internal/scheduler"
+	"github.com/ternarybob/gitsync/internal/services"
 )
 
 func main() {
+	logger := common.GetLogger()
+
 	var (
 		configPath     = flag.String("config", "", "Path to configuration file (defaults to gitsync.toml in executable directory)")
 		validateConfig = flag.Bool("validate", false, "Validate configuration file and exit")
@@ -70,14 +72,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	common.Infof("Starting GitSync v%s (build: %s)", common.GetVersion(), common.GetBuild())
+	logger.Info().Str("version", common.GetVersion()).Str("build", common.GetBuild()).Msg("Starting GitSync")
 
 	// Test git availability and version at startup
 	gitVersion, err := testGitAvailability()
 	if err != nil {
-		common.Fatalf("Git is not available: %v", err)
+		logger.Fatal().Err(err).Msg("Git is not available")
 	}
-	common.Infof("Git availability verified: %s", gitVersion)
+	logger.Info().Str("git_version", gitVersion).Msg("Git availability verified")
 
 	if *showStats {
 		fmt.Println("Statistics are now tracked via logging.")
@@ -86,32 +88,32 @@ func main() {
 	}
 
 	if *runJob != "" {
-		common.Infof("Running job immediately: %s", *runJob)
-		s := scheduler.New(cfg)
+		logger.Info().Str("job", *runJob).Msg("Running job immediately")
+		s := services.NewScheduler(cfg)
 		if err := s.RunJobNow(*runJob); err != nil {
-			common.Fatalf("Failed to run job: %v", err)
+			logger.Fatal().Err(err).Msg("Failed to run job")
 		}
-		common.Info("Job completed")
+		logger.Info().Msg("Job completed")
 		os.Exit(0)
 	}
 
-	sched := scheduler.New(cfg)
+	sched := services.NewScheduler(cfg)
 
 	// Run all enabled jobs once at startup
-	common.Info("Running initial sync for all enabled jobs...")
+	logger.Info().Msg("Running initial sync for all enabled jobs...")
 	runInitialJobs(sched, cfg)
 
 	if err := sched.Start(); err != nil {
-		common.Fatalf("Failed to start scheduler: %v", err)
+		logger.Fatal().Err(err).Msg("Failed to start scheduler")
 	}
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
 	<-quit
 
-	common.Info("Shutting down GitSync...")
+	logger.Info().Msg("Shutting down GitSync...")
 	sched.Stop()
-	common.Info("Shutdown complete")
+	logger.Info().Msg("Shutdown complete")
 }
 
 func testGitAvailability() (string, error) {
@@ -124,34 +126,34 @@ func testGitAvailability() (string, error) {
 	return string(output), nil
 }
 
-func runInitialJobs(sched *scheduler.Scheduler, cfg *common.Config) {
+func runInitialJobs(sched *services.Scheduler, cfg *common.Config) {
+	logger := common.GetLogger()
 	enabledJobs := cfg.GetEnabledJobs()
 	if len(enabledJobs) == 0 {
-		common.Info("No enabled jobs found, skipping initial sync")
+		logger.Info().Msg("No enabled jobs found, skipping initial sync")
 		return
 	}
 
 	var successCount, errorCount int
-	common.Infof("Starting initial sync for %d enabled jobs", len(enabledJobs))
+	logger.Info().Int("job_count", len(enabledJobs)).Msg("Starting initial sync for enabled jobs")
 
 	for _, jobName := range enabledJobs {
-		common.Infof("🔄 Running initial sync for job: %s", jobName)
+		logger.Info().Str("job", jobName).Msg("🔄 Running initial sync for job")
 
 		if err := sched.RunJobNow(jobName); err != nil {
 			errorCount++
-			common.Errorf("❌ INITIAL SYNC FAILED for job '%s': %v", jobName, err)
+			logger.Error().Str("job", jobName).Err(err).Msg("❌ INITIAL SYNC FAILED for job")
 		} else {
 			successCount++
-			common.Infof("✅ Initial sync completed successfully for job: %s", jobName)
+			logger.Info().Str("job", jobName).Msg("✅ Initial sync completed successfully for job")
 		}
 	}
 
-	common.Infof("Initial sync summary: %d successful, %d failed out of %d jobs",
-		successCount, errorCount, len(enabledJobs))
+	logger.Info().Int("successful", successCount).Int("failed", errorCount).Int("total", len(enabledJobs)).Msg("Initial sync summary")
 
 	if errorCount > 0 {
-		common.Errorf("⚠️  WARNING: %d jobs failed during initial sync - check configuration and connectivity", errorCount)
+		logger.Error().Int("failed_count", errorCount).Msg("⚠️  WARNING: Jobs failed during initial sync - check configuration and connectivity")
 	} else {
-		common.Info("🎉 All initial sync jobs completed successfully")
+		logger.Info().Msg("🎉 All initial sync jobs completed successfully")
 	}
 }

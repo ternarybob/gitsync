@@ -1,4 +1,4 @@
-package scheduler
+package services
 
 import (
 	"context"
@@ -8,7 +8,6 @@ import (
 
 	"github.com/robfig/cron/v3"
 	"github.com/ternarybob/gitsync/internal/common"
-	gitsync "github.com/ternarybob/gitsync/internal/sync"
 )
 
 type Scheduler struct {
@@ -20,7 +19,7 @@ type Scheduler struct {
 	cancel context.CancelFunc
 }
 
-func New(cfg *common.Config) *Scheduler {
+func NewScheduler(cfg *common.Config) *Scheduler {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	return &Scheduler{
@@ -33,56 +32,56 @@ func New(cfg *common.Config) *Scheduler {
 }
 
 func (s *Scheduler) Start() error {
-	common.Info("Starting scheduler")
+	logger := common.GetLogger()
+	logger.Info().Msg("Starting scheduler")
 
 	for _, jobName := range s.config.Jobs.Names {
 		jobConfig, exists := s.config.GetJobConfig(jobName)
 		if !exists {
-			common.WithField("job", jobName).Error("Job definition not found")
+			logger.Error().Str("job", jobName).Msg("Job definition not found")
 			continue
 		}
 
 		if !jobConfig.Enabled {
-			common.WithField("job", jobName).Info("Job is disabled, skipping")
+			logger.Info().Str("job", jobName).Msg("Job is disabled, skipping")
 			continue
 		}
 
 		if err := s.scheduleJob(jobName, jobConfig); err != nil {
-			common.WithFields(map[string]interface{}{
-				"job":   jobName,
-				"error": err,
-			}).Error("Failed to schedule job")
+			logger.Error().Str("job", jobName).Err(err).Msg("Failed to schedule job")
 			continue
 		}
 	}
 
 	s.cron.Start()
 
-	common.Infof("Scheduler started with %d active jobs", len(s.jobs))
+	logger.Info().Int("active_jobs", len(s.jobs)).Msg("Scheduler started")
 	return nil
 }
 
 func (s *Scheduler) Stop() {
-	common.Info("Stopping scheduler")
+	logger := common.GetLogger()
+	logger.Info().Msg("Stopping scheduler")
 
 	s.cancel()
 
 	ctx := s.cron.Stop()
 	<-ctx.Done()
 
-	common.Info("Scheduler stopped")
+	logger.Info().Msg("Scheduler stopped")
 }
 
 func (s *Scheduler) scheduleJob(jobName string, jobConfig *common.JobConfig) error {
+	logger := common.GetLogger()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	if _, exists := s.jobs[jobName]; exists {
-		common.WithField("job", jobName).Warn("Job already scheduled")
+		logger.Warn().Str("job", jobName).Msg("Job already scheduled")
 		return nil
 	}
 
-	syncer, err := gitsync.NewSyncer(jobName, jobConfig)
+	syncer, err := NewSyncer(jobName, jobConfig)
 	if err != nil {
 		return fmt.Errorf("failed to create syncer: %w", err)
 	}
@@ -96,17 +95,15 @@ func (s *Scheduler) scheduleJob(jobName string, jobConfig *common.JobConfig) err
 
 	s.jobs[jobName] = entryID
 
-	common.WithFields(map[string]interface{}{
-		"job":      jobName,
-		"schedule": s.config.Jobs.Schedule,
-	}).Info("Job scheduled successfully")
+	logger.Info().Str("job", jobName).Str("schedule", s.config.Jobs.Schedule).Msg("Job scheduled successfully")
 
 	return nil
 }
 
-func (s *Scheduler) createJobFunc(jobName string, jobConfig *common.JobConfig, syncer *gitsync.Syncer) func() {
+func (s *Scheduler) createJobFunc(jobName string, jobConfig *common.JobConfig, syncer *Syncer) func() {
 	return func() {
-		common.WithField("job", jobName).Info("Executing scheduled job")
+		logger := common.GetLogger()
+		logger.Info().Str("job", jobName).Msg("Executing scheduled job")
 
 		ctx := s.ctx
 		if s.config.Jobs.Timeout > 0 {
@@ -118,16 +115,9 @@ func (s *Scheduler) createJobFunc(jobName string, jobConfig *common.JobConfig, s
 		startTime := time.Now()
 
 		if err := syncer.SyncAll(ctx); err != nil {
-			common.WithFields(map[string]interface{}{
-				"job":      jobName,
-				"error":    err,
-				"duration": time.Since(startTime).Seconds(),
-			}).Error("Job execution failed")
+			logger.Error().Str("job", jobName).Err(err).Float64("duration", time.Since(startTime).Seconds()).Msg("Job execution failed")
 		} else {
-			common.WithFields(map[string]interface{}{
-				"job":      jobName,
-				"duration": time.Since(startTime).Seconds(),
-			}).Info("Job execution completed")
+			logger.Info().Str("job", jobName).Float64("duration", time.Since(startTime).Seconds()).Msg("Job execution completed")
 		}
 	}
 }
@@ -138,7 +128,7 @@ func (s *Scheduler) RunJobNow(jobName string) error {
 		return fmt.Errorf("job not found: %s", jobName)
 	}
 
-	syncer, err := gitsync.NewSyncer(jobName, jobConfig)
+	syncer, err := NewSyncer(jobName, jobConfig)
 	if err != nil {
 		return fmt.Errorf("failed to create syncer: %w", err)
 	}

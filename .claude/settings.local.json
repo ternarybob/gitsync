@@ -28,7 +28,9 @@
       "WebFetch(domain:raw.githubusercontent.com)",
       "Read(//c/development/ternarybob/arbor/**)",
       "Bash(dir:*)",
-      "Read(//c/Users/bobmc/Pictures/Screenshots 1/**)"
+      "Read(//c/Users/bobmc/Pictures/Screenshots 1/**)",
+      "Bash(go mod:*)",
+      "Bash(go vet:*)"
     ],
     "deny": [],
     "ask": []
