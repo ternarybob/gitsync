@@ -48,9 +48,11 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
 
     - name: Set up Go
-      uses: actions/setup-go@v4
+      uses: actions/setup-go@v5
       with:
         go-version: '1.21'
 
@@ -90,7 +92,7 @@ jobs:
         BINARY_NAME="gitsync-${{ steps.version.outputs.version }}-${{ matrix.name }}${{ matrix.ext }}"
         go build \
           -trimpath \
-          -ldflags "-s -w -X github.com/ternarybob/gitsync/internal/version.Version=${{ steps.version.outputs.version }} -X 'github.com/ternarybob/gitsync/internal/version.Build=${{ steps.build_time.outputs.build_time }}'" \
+          -ldflags "-s -w -X github.com/ternarybob/gitsync/internal/common.Version=${{ steps.version.outputs.version }} -X 'github.com/ternarybob/gitsync/internal/common.Build=${{ steps.build_time.outputs.build_time }}'" \
           -o "dist/${BINARY_NAME}" \
           ./cmd/gitsync
 
@@ -105,7 +107,7 @@ jobs:
         fi
 
     - name: Upload artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: gitsync-${{ matrix.name }}
         path: dist/${{ env.archive }}
@@ -113,11 +115,13 @@ jobs:
   release:
     needs: build
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
 
     - name: Get version
       id: version
@@ -136,7 +140,7 @@ jobs:
         fi
 
     - name: Download all artifacts
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         path: artifacts
 
@@ -202,7 +206,7 @@ jobs:
         EOF
 
     - name: Create Release
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2
       with:
         tag_name: ${{ steps.version.outputs.tag }}
         name: GitSync ${{ steps.version.outputs.version }}
@@ -210,6 +214,6 @@ jobs:
         files: release/*
         draft: false
         prerelease: false
-        generate_release_notes: true
+        generate_release_notes: false
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,42 @@
+name: Manual Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Tag name for the release (e.g., v1.0.0)'
+        required: true
+        type: string
+      release_name:
+        description: 'Release name (e.g., Version 1.0.0)'
+        required: true
+        type: string
+      prerelease:
+        description: 'Is this a pre-release?'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Create tag
+      run: |
+        git config user.name github-actions
+        git config user.email github-actions@github.com
+        git tag -a ${{ inputs.tag_name }} -m "${{ inputs.release_name }}"
+        git push origin ${{ inputs.tag_name }}
+
+    - name: Trigger release workflow
+      run: |
+        echo "Tag created: ${{ inputs.tag_name }}"
+        echo "The release workflow should now trigger automatically."

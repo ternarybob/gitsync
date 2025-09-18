@@ -1,0 +1,119 @@
+name: Build and Test
+
+on:
+  push:
+    branches: [ main ]
+    paths-ignore:
+      - '**.md'
+      - '.gitignore'
+      - 'LICENSE'
+  pull_request:
+    branches: [ main ]
+    paths-ignore:
+      - '**.md'
+      - '.gitignore'
+      - 'LICENSE'
+  workflow_dispatch:
+
+env:
+  GO_VERSION: '1.21'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: ${{ env.GO_VERSION }}
+
+    - name: Get dependencies
+      run: go mod download
+
+    - name: Run tests
+      run: go test -v -race -coverprofile=coverage.txt -covermode=atomic ./...
+
+    - name: Run go vet
+      run: go vet ./...
+
+    - name: Check formatting
+      run: |
+        if [ -n "$(gofmt -s -l .)" ]; then
+          echo "Go files need formatting:"
+          gofmt -s -l .
+          exit 1
+        fi
+
+  build:
+    needs: test
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        include:
+          - os: ubuntu-latest
+            goos: linux
+            goarch: amd64
+            binary: gitsync-linux
+          - os: windows-latest
+            goos: windows
+            goarch: amd64
+            binary: gitsync.exe
+          - os: macos-latest
+            goos: darwin
+            goarch: arm64
+            binary: gitsync-darwin
+
+    runs-on: ${{ matrix.os }}
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: ${{ env.GO_VERSION }}
+
+    - name: Get dependencies
+      run: go mod download
+
+    - name: Get version from .version file
+      id: version
+      shell: bash
+      run: |
+        VERSION=$(grep '^version:' .version | awk '{print $2}')
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "Using version: $VERSION"
+
+    - name: Build binary
+      shell: bash
+      env:
+        GOOS: ${{ matrix.goos }}
+        GOARCH: ${{ matrix.goarch }}
+        CGO_ENABLED: 0
+      run: |
+        mkdir -p bin
+        BUILD_TIME=$(date '+%Y-%m-%d %H:%M:%S')
+        go build -o bin/${{ matrix.binary }} \
+          -ldflags "-X github.com/ternarybob/gitsync/internal/common.Version=${{ steps.version.outputs.version }} -X 'github.com/ternarybob/gitsync/internal/common.Build=${BUILD_TIME}' -s -w" \
+          -trimpath \
+          ./cmd/gitsync
+
+    - name: Test binary
+      shell: bash
+      run: |
+        if [ "${{ matrix.os }}" == "windows-latest" ]; then
+          ./bin/${{ matrix.binary }} -version
+        else
+          chmod +x ./bin/${{ matrix.binary }}
+          ./bin/${{ matrix.binary }} -version
+        fi
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ matrix.binary }}
+        path: bin/${{ matrix.binary }}
+        retention-days: 7
