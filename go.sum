@@ -21,6 +21,8 @@ github.com/stretchr/testify v1.10.0 h1:Xv5erBjTwe/5IxqUQTdXv5kgmIvbHo3QQyRwhJsOf
 github.com/stretchr/testify v1.10.0/go.mod h1:r2ic/lqez/lEtzL7wO/rwa5dbSLXVDPFyf8C91i36aY=
 github.com/ternarybob/arbor v1.4.41 h1:OYVGbqwnSWIjvrwtpXYRq+T81JnGPlvw8MSw7HaAnUI=
 github.com/ternarybob/arbor v1.4.41/go.mod h1:HFhSipAT5qeNT6smyk2z1GM7gSfQOy180MmA6qSVdK4=
+github.com/ternarybob/arbor v1.4.42 h1:pwR6pZM3bF2TSNBXpE8NHfez7d1G6F0/E1UZ5N9Bems=
+github.com/ternarybob/arbor v1.4.42/go.mod h1:HFhSipAT5qeNT6smyk2z1GM7gSfQOy180MmA6qSVdK4=
 github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e h1:JVG44RsyaB9T2KIHavMF/ppJZNG9ZpyihvCd0w101no=
 github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e/go.mod h1:RbqR21r5mrJuqunuUZ/Dhy/avygyECGrLceyNeo4LiM=
 go.etcd.io/bbolt v1.4.3 h1:dEadXpI6G79deX5prL3QRNP6JB8UxVkqo4UPnHaNXJo=

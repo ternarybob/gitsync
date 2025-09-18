@@ -59,6 +59,12 @@ func main() {
 		os.Exit(0)
 	}
 
+	// Calculate enabled jobs
+	enabledJobs := cfg.GetEnabledJobs()
+
+	// Show banner first - before any logging
+	common.PrintBanner(cfg.Service.Name, cfg.Service.Environment, len(cfg.Jobs.Names), len(enabledJobs))
+
 	if err := common.InitLogger(&cfg.Logging); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to initialize logger: %v\n", err)
 		os.Exit(1)
@@ -66,11 +72,12 @@ func main() {
 
 	common.Infof("Starting GitSync v%s (build: %s)", common.GetVersion(), common.GetBuild())
 
-	// Test git availability at startup
-	if err := testGitAvailability(); err != nil {
+	// Test git availability and version at startup
+	gitVersion, err := testGitAvailability()
+	if err != nil {
 		common.Fatalf("Git is not available: %v", err)
 	}
-	common.Info("Git availability verified")
+	common.Infof("Git availability verified: %s", gitVersion)
 
 	if *showStats {
 		fmt.Println("Statistics are now tracked via logging.")
@@ -89,14 +96,14 @@ func main() {
 	}
 
 	sched := scheduler.New(cfg)
+
+	// Run all enabled jobs once at startup
+	common.Info("Running initial sync for all enabled jobs...")
+	runInitialJobs(sched, cfg)
+
 	if err := sched.Start(); err != nil {
 		common.Fatalf("Failed to start scheduler: %v", err)
 	}
-
-	// Calculate enabled jobs
-	enabledJobs := cfg.GetEnabledJobs()
-
-	common.PrintBanner(cfg.Service.Name, cfg.Service.Environment, len(cfg.Jobs.Names), len(enabledJobs))
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
@@ -107,11 +114,44 @@ func main() {
 	common.Info("Shutdown complete")
 }
 
-func testGitAvailability() error {
-	// Test if git command is available
+func testGitAvailability() (string, error) {
+	// Test if git command is available and get version
 	cmd := exec.Command("git", "--version")
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("git command not found or not executable: %w", err)
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("git command not found or not executable: %w", err)
 	}
-	return nil
+	return string(output), nil
+}
+
+func runInitialJobs(sched *scheduler.Scheduler, cfg *common.Config) {
+	enabledJobs := cfg.GetEnabledJobs()
+	if len(enabledJobs) == 0 {
+		common.Info("No enabled jobs found, skipping initial sync")
+		return
+	}
+
+	var successCount, errorCount int
+	common.Infof("Starting initial sync for %d enabled jobs", len(enabledJobs))
+
+	for _, jobName := range enabledJobs {
+		common.Infof("🔄 Running initial sync for job: %s", jobName)
+
+		if err := sched.RunJobNow(jobName); err != nil {
+			errorCount++
+			common.Errorf("❌ INITIAL SYNC FAILED for job '%s': %v", jobName, err)
+		} else {
+			successCount++
+			common.Infof("✅ Initial sync completed successfully for job: %s", jobName)
+		}
+	}
+
+	common.Infof("Initial sync summary: %d successful, %d failed out of %d jobs",
+		successCount, errorCount, len(enabledJobs))
+
+	if errorCount > 0 {
+		common.Errorf("⚠️  WARNING: %d jobs failed during initial sync - check configuration and connectivity", errorCount)
+	} else {
+		common.Info("🎉 All initial sync jobs completed successfully")
+	}
 }

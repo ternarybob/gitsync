@@ -56,7 +56,6 @@ type LoggingConfig struct {
 	Output     string `toml:"output"`
 	MaxSize    int    `toml:"max_size"`
 	MaxBackups int    `toml:"max_backups"`
-	MaxAge     int    `toml:"max_age"`
 }
 
 func DefaultConfig() *Config {
@@ -144,11 +143,10 @@ func parseConfig(rawConfig map[string]interface{}, config *Config) error {
 		case "logging":
 			if loggingMap, ok := value.(map[string]interface{}); ok {
 				config.Logging.Level = getString(loggingMap, "level", "info")
-				config.Logging.Format = getString(loggingMap, "format", "json")
+				config.Logging.Format = getString(loggingMap, "format", "text")
 				config.Logging.Output = getString(loggingMap, "output", "both")
 				config.Logging.MaxSize = getInt(loggingMap, "max_size", 100)
 				config.Logging.MaxBackups = getInt(loggingMap, "max_backups", 3)
-				config.Logging.MaxAge = getInt(loggingMap, "max_age", 7)
 			}
 		default:
 			// Job definition

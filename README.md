@@ -82,12 +82,11 @@ git_token = "${BACKUP_TOKEN}"
 
 # Logging configuration
 [logging]
-level = "info"                      # debug, info, warn, error (default: debug)
+level = "info"                      # debug, info, warn, error (default: info)
 format = "text"                     # text, json (default: text)
-output = "both"                     # stdout, file, both (default: stdout)
-max_file_size = 100                 # Log file max size in MB (default: 100)
+output = "both"                     # stdout, file, both (default: both)
+max_size = 100                      # Log file max size in MB (default: 100)
 max_backups = 3                     # Number of backup log files (default: 3)
-max_age = 7                         # Days to retain log files (default: 3)
 ```
 
 ## Advanced Features
@@ -203,18 +202,21 @@ If no `[logging]` section is specified, GitSync uses these defaults:
 
 ```toml
 [logging]
-level = "debug"                     # Default: debug
+level = "info"                      # Default: info
 format = "text"                     # Default: text
-output = "stdout"                   # Default: stdout
-max_file_size = 100                 # Default: 100 MB
+output = "both"                     # Default: both
+max_size = 100                      # Default: 100 MB
 max_backups = 3                     # Default: 3 files
-max_age = 3                         # Default: 3 days
 ```
 
 **Output Options:**
-- `stdout` - Console only (default)
-- `file` - File only (logs/{executable_directory}/logs/gitsync-YYYY-MM-DD.log)
-- `both` - Console and file output
+- `stdout` - Console only
+- `file` - File only (logs/gitsync.log with automatic rotation)
+- `both` - Console and file output (default)
+
+**Log Rotation:**
+- Files are automatically rotated based on size (`max_size`) and count (`max_backups`)
+- Arbor appends timestamps to rotated files (e.g., gitsync.log, gitsync.YYYY-MM-DDTHH-MM-SS.log)
 
 ## Usage
 
@@ -262,8 +264,8 @@ project/
 ├── gitsync.exe         # Executable
 ├── gitsync.toml        # Default configuration (required)
 └── logs/               # Log files (created automatically)
-    ├── gitsync-2025-01-15.log
-    └── gitsync-2025-01-16.log
+    ├── gitsync.log     # Current log file
+    └── gitsync.2025-01-15T14-30-45.log  # Rotated backup
 ```
 
 ### Startup Validation

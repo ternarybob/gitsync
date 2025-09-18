@@ -14,7 +14,7 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gookit/color v1.5.4 // indirect
 	github.com/phuslu/log v1.0.118 // indirect
-	github.com/ternarybob/arbor v1.4.41 // indirect
+	github.com/ternarybob/arbor v1.4.42 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	golang.org/x/sys v0.33.0 // indirect
 )

@@ -6,7 +6,6 @@ import (
 	"github.com/ternarybob/arbor/models"
 	"os"
 	"path/filepath"
-	"time"
 )
 
 var logger arbor.ILogger
@@ -36,16 +35,18 @@ func InitLogger(config *LoggingConfig) error {
 
 	// Configure file logging if requested
 	if config.Output == "both" || config.Output == "file" || config.Output == "" {
-		// Create timestamped log file
-		logFile := filepath.Join(logsDir, fmt.Sprintf("gitsync-%s.log", time.Now().Format("2006-01-02")))
+		// Create log file (arbor will handle rotation naming)
+		logFile := filepath.Join(logsDir, "gitsync.log")
 		fmt.Printf("Log file: %s\n", logFile)
 
 		logger = logger.WithFileWriter(models.WriterConfiguration{
-			Type:       models.LogWriterTypeFile,
-			FileName:   logFile,
-			TimeFormat: "2006-01-02 15:04:05.000",
-			MaxSize:    int64(config.MaxSize * 1024 * 1024), // Convert MB to bytes
-			MaxBackups: config.MaxBackups,
+			Type:             models.LogWriterTypeFile,
+			FileName:         logFile,
+			TimeFormat:       "15:04:05",
+			MaxSize:          int64(config.MaxSize * 1024 * 1024), // Convert MB to bytes
+			MaxBackups:       config.MaxBackups,
+			TextOutput:       true,
+			DisableTimestamp: false,
 		})
 	}
 
@@ -54,6 +55,7 @@ func InitLogger(config *LoggingConfig) error {
 		logger = logger.WithConsoleWriter(models.WriterConfiguration{
 			Type:             models.LogWriterTypeConsole,
 			TimeFormat:       "15:04:05",
+			TextOutput:       true,
 			DisableTimestamp: false,
 		})
 	}
@@ -71,11 +73,10 @@ func InitLogger(config *LoggingConfig) error {
 func DefaultLoggingConfig() *LoggingConfig {
 	return &LoggingConfig{
 		Level:      "info",
-		Format:     "json",
+		Format:     "text",
 		Output:     "both",
 		MaxSize:    100,
 		MaxBackups: 3,
-		MaxAge:     7,
 	}
 }
 
