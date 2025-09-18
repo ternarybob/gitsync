@@ -10,11 +10,32 @@ on:
         description: 'Version tag (e.g., v1.0.0)'
         required: true
         type: string
+      create_tag:
+        description: 'Create and push tag'
+        required: false
+        type: boolean
+        default: true
 
 permissions:
   contents: write
 
 jobs:
+  create_tag:
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.create_tag == 'true'
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Create and push tag
+      run: |
+        git config user.name github-actions
+        git config user.email github-actions@github.com
+        git tag -a ${{ github.event.inputs.version }} -m "Release ${{ github.event.inputs.version }}"
+        git push origin ${{ github.event.inputs.version }}
+
   build:
     runs-on: ubuntu-latest
     strategy:
@@ -115,7 +136,7 @@ jobs:
   release:
     needs: build
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+    if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && github.event.inputs.create_tag == 'false')
 
     steps:
     - name: Checkout code
