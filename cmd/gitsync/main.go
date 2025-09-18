@@ -14,8 +14,6 @@ import (
 )
 
 func main() {
-	logger := common.GetLogger()
-
 	var (
 		configPath     = flag.String("config", "", "Path to configuration file (defaults to gitsync.toml in executable directory)")
 		validateConfig = flag.Bool("validate", false, "Validate configuration file and exit")
@@ -64,13 +62,17 @@ func main() {
 	// Calculate enabled jobs
 	enabledJobs := cfg.GetEnabledJobs()
 
-	// Show banner first - before any logging
-	common.PrintBanner(cfg.Service.Name, cfg.Service.Environment, len(cfg.Jobs.Names), len(enabledJobs))
-
+	// Initialize logger with config before any logging operations
 	if err := common.InitLogger(&cfg.Logging); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to initialize logger: %v\n", err)
 		os.Exit(1)
 	}
+
+	// Now get the configured logger
+	logger := common.GetLogger()
+
+	// Show banner after logger is initialized
+	common.PrintBanner(cfg.Service.Name, cfg.Service.Environment, len(cfg.Jobs.Names), len(enabledJobs))
 
 	logger.Info().Str("version", common.GetVersion()).Str("build", common.GetBuild()).Msg("Starting GitSync")
 

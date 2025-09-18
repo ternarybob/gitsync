@@ -1,33 +1,53 @@
+// -----------------------------------------------------------------------
+// Last Modified: Friday, 19th September 2025 6:59:25 am
+// Modified By: Bob McAllan
+// -----------------------------------------------------------------------
+
 package common
 
 import (
 	"fmt"
-	"github.com/ternarybob/arbor"
-	"github.com/ternarybob/arbor/models"
 	"os"
 	"path/filepath"
 	"sync"
+
+	"github.com/ternarybob/arbor"
+	"github.com/ternarybob/arbor/models"
 )
 
 var (
 	logger arbor.ILogger
-	once   sync.Once
+	mu     sync.RWMutex
 )
 
 func GetLogger() arbor.ILogger {
-	once.Do(func() {
-		if logger == nil {
-			logger = initDefaultLogger()
-		}
-	})
+	mu.RLock()
+	if logger != nil {
+		mu.RUnlock()
+		return logger
+	}
+	mu.RUnlock()
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	// Double-check after acquiring write lock
+	if logger == nil {
+		logger = initDefaultLogger()
+	}
 	return logger
 }
 
 func InitLogger(config *LoggingConfig) error {
+	mu.Lock()
+	defer mu.Unlock()
+
+	if logger != nil {
+		return nil // Already initialized
+	}
+
 	var err error
-	once.Do(func() {
-		logger, err = createLogger(config)
-	})
+	logger, err = createLogger(config)
 	return err
 }
 
