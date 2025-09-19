@@ -94,38 +94,56 @@ try {
         exit 1
     }
 
-    # Get version information
+    # Get version information and auto-increment
+    $versionFilePath = ".version"
+    $currentVersion = "0.0.1"  # Default starting version
+    $buildTime = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+
     if (-not $Version) {
-        # Try to read from .version file first
-        $versionFilePath = ".version"
+        # Read and auto-increment version from .version file
         if (Test-Path $versionFilePath) {
             $versionLines = Get-Content $versionFilePath
             foreach ($line in $versionLines) {
                 if ($line -match '^version:\s*(.+)$') {
-                    $Version = $matches[1].Trim()
+                    $currentVersion = $matches[1].Trim()
                     break
                 }
             }
+
+            # Parse and increment version
+            if ($currentVersion -match '^(\d+)\.(\d+)\.(\d+)$') {
+                $major = [int]$matches[1]
+                $minor = [int]$matches[2]
+                $patch = [int]$matches[3] + 1
+                $Version = "$major.$minor.$patch"
+            }
+            else {
+                $Version = $currentVersion
+            }
+        }
+        else {
+            # Create initial version file if it doesn't exist
+            $Version = $currentVersion
         }
 
-        # Fall back to git if .version file doesn't exist or version not found
-        if (-not $Version) {
-            try {
-                $Version = git rev-parse --short HEAD 2>$null
-                if (-not $Version) {
-                    $Version = "dev"
-                }
-            }
-            catch {
-                $Version = "dev"
-            }
-        }
+        # Update .version file with new version and build timestamp
+        $versionContent = @"
+version: $Version
+build: $buildTime
+"@
+        Set-Content -Path $versionFilePath -Value $versionContent
+        Write-Host "Auto-incremented version to: $Version" -ForegroundColor Cyan
+    }
+    else {
+        # Manual version specified, update .version file
+        $versionContent = @"
+version: $Version
+build: $buildTime
+"@
+        Set-Content -Path $versionFilePath -Value $versionContent
+        Write-Host "Using specified version: $Version" -ForegroundColor Green
     }
 
-    Write-Host "Version: $Version" -ForegroundColor Green
-
-    # Get build timestamp
-    $buildTime = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
     Write-Host "Build Time: $buildTime"
 
     # Clean if requested

@@ -87,22 +87,46 @@ if [[ ! "$ENVIRONMENT" =~ ^(dev|staging|prod)$ ]]; then
     exit 1
 fi
 
-# Get version if not provided
-if [ -z "$VERSION" ]; then
-    # Try to read from .version file first
-    if [ -f ".version" ]; then
-        VERSION=$(grep "^version:" .version | cut -d' ' -f2 2>/dev/null)
-    fi
-
-    # Fall back to git if .version file doesn't exist or version not found
-    if [ -z "$VERSION" ]; then
-        VERSION=$(git rev-parse --short HEAD 2>/dev/null || echo "dev")
-    fi
-fi
-echo -e "${GREEN}Version: $VERSION${NC}"
-
-# Get build time
+# Get version information and auto-increment
+VERSION_FILE=".version"
+CURRENT_VERSION="0.0.1"  # Default starting version
 BUILD_TIME=$(date +"%Y-%m-%d %H:%M:%S")
+
+if [ -z "$VERSION" ]; then
+    # Read and auto-increment version from .version file
+    if [ -f "$VERSION_FILE" ]; then
+        CURRENT_VERSION=$(grep "^version:" "$VERSION_FILE" | awk '{print $2}' 2>/dev/null || echo "0.0.1")
+
+        # Parse and increment version
+        if [[ "$CURRENT_VERSION" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+            MAJOR="${BASH_REMATCH[1]}"
+            MINOR="${BASH_REMATCH[2]}"
+            PATCH="${BASH_REMATCH[3]}"
+            PATCH=$((PATCH + 1))
+            VERSION="$MAJOR.$MINOR.$PATCH"
+        else
+            VERSION="$CURRENT_VERSION"
+        fi
+    else
+        # Create initial version file if it doesn't exist
+        VERSION="$CURRENT_VERSION"
+    fi
+
+    # Update .version file with new version and build timestamp
+    cat > "$VERSION_FILE" << EOF
+version: $VERSION
+build: $BUILD_TIME
+EOF
+    echo -e "${CYAN}Auto-incremented version to: $VERSION${NC}"
+else
+    # Manual version specified, update .version file
+    cat > "$VERSION_FILE" << EOF
+version: $VERSION
+build: $BUILD_TIME
+EOF
+    echo -e "${GREEN}Using specified version: $VERSION${NC}"
+fi
+
 echo "Build Time: $BUILD_TIME"
 
 # Clean if requested

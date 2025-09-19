@@ -32,7 +32,10 @@
       "Bash(go mod:*)",
       "Bash(go vet:*)",
       "Read(//c/development/ternarybob/keep-alive/.github/workflows/**)",
-      "Bash(git tag:*)"
+      "Bash(git tag:*)",
+      "Read(//c/development/ternarybob/keep-alive/scripts/**)",
+      "Read(//c/development/ternarybob/keep-alive/**)",
+      "Bash(awk:*)"
     ],
     "deny": [],
     "ask": []
