@@ -80,6 +80,40 @@ done
 
 echo -e "${CYAN}GitSync Build Script${NC}"
 echo -e "${YELLOW}Environment: $ENVIRONMENT${NC}"
+echo "Current Location: $(pwd)"
+
+# Check for running GitSync processes and kill them
+echo -e "\n${YELLOW}Checking for running GitSync processes...${NC}"
+RUNNING_PROCESSES=$(pgrep -f "gitsync" 2>/dev/null || true)
+if [ -n "$RUNNING_PROCESSES" ]; then
+    PROCESS_COUNT=$(echo "$RUNNING_PROCESSES" | wc -l)
+    echo -e "${RED}Found $PROCESS_COUNT running GitSync process(es). Terminating...${NC}"
+    for PID in $RUNNING_PROCESSES; do
+        if kill -0 "$PID" 2>/dev/null; then
+            PROCESS_NAME=$(ps -p "$PID" -o comm= 2>/dev/null || echo "gitsync")
+            echo -e "${RED}  Killing process: $PROCESS_NAME (PID: $PID)${NC}"
+            if ! kill "$PID" 2>/dev/null; then
+                echo -e "${YELLOW}Warning: Failed to kill process $PID${NC}"
+            else
+                # Wait up to 5 seconds for graceful exit
+                for i in {1..50}; do
+                    if ! kill -0 "$PID" 2>/dev/null; then
+                        break
+                    fi
+                    sleep 0.1
+                done
+                # Force kill if still running
+                if kill -0 "$PID" 2>/dev/null; then
+                    kill -9 "$PID" 2>/dev/null || true
+                fi
+            fi
+        fi
+    done
+    sleep 1  # Brief pause to ensure processes are fully terminated
+    echo -e "${GREEN}All GitSync processes terminated${NC}"
+else
+    echo -e "${GREEN}No running GitSync processes found${NC}"
+fi
 
 # Validate environment
 if [[ ! "$ENVIRONMENT" =~ ^(dev|staging|prod)$ ]]; then
@@ -188,15 +222,23 @@ if [ "$VERBOSE" = true ]; then
 fi
 
 # Build the binary
-go build -o "$OUTPUT_PATH" -ldflags "$LDFLAGS" $BUILD_FLAGS ./cmd/gitsync
+if ! go build -o "$OUTPUT_PATH" -ldflags "$LDFLAGS" $BUILD_FLAGS ./cmd/gitsync; then
+    echo -e "${RED}Build failed${NC}"
+    exit 1
+fi
 
-# Display results
+# Display build results
 echo -e "\n${GREEN}Build successful!${NC}"
 echo -e "${YELLOW}Output: $OUTPUT_PATH${NC}"
 
 # Show binary info
-SIZE=$(du -h "$OUTPUT_PATH" | cut -f1)
-echo "Size: $SIZE"
+if [ -f "$OUTPUT_PATH" ]; then
+    SIZE=$(du -h "$OUTPUT_PATH" | cut -f1)
+    echo "Size: $SIZE"
+else
+    echo -e "${RED}Error: Built binary not found at $OUTPUT_PATH${NC}"
+    exit 1
+fi
 
 if [ -n "$OS" ] && [ -n "$ARCH" ]; then
     echo "Target: $OS/$ARCH"

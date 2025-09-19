@@ -35,7 +35,8 @@
       "Bash(git tag:*)",
       "Read(//c/development/ternarybob/keep-alive/scripts/**)",
       "Read(//c/development/ternarybob/keep-alive/**)",
-      "Bash(awk:*)"
+      "Bash(awk:*)",
+      "Bash(./scripts/build.ps1)"
     ],
     "deny": [],
     "ask": []
