@@ -31,7 +31,8 @@
       "Read(//c/Users/bobmc/Pictures/Screenshots 1/**)",
       "Bash(go mod:*)",
       "Bash(go vet:*)",
-      "Read(//c/development/ternarybob/keep-alive/.github/workflows/**)"
+      "Read(//c/development/ternarybob/keep-alive/.github/workflows/**)",
+      "Bash(git tag:*)"
     ],
     "deny": [],
     "ask": []
